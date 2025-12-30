@@ -1,41 +1,184 @@
 use crate::gpu_context::GpuContext;
-use crate::particle::Particle;
-use crate::texture_manager::TextureManager;
 use std::sync::Arc;
 use winit::window::Window;
 
 pub struct State {
+    pub window: Arc<Window>,
+
     gpu_context: GpuContext,
     is_surface_configured: bool,
-    pub window: Arc<Window>,
-    texture_manager: TextureManager,
-    particle_grid: Vec<Particle>, // the particles in a grid
+
+    render_pipeline: wgpu::RenderPipeline,
+
+    bind_group: wgpu::BindGroup,
+    particle_grid_buffer: wgpu::Buffer, // GPU buffer for the particles in a grid
+    grid_dims_buffer: wgpu::Buffer,
+    grid_width: u32,
+    grid_height: u32,
 }
 
 impl State {
     pub async fn new(
         window: Arc<Window>,
-        particle_grid: Vec<Particle>,
+        initial_particle_grid: Vec<u8>,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Self> {
         // Create gpu context containing the gpu instance, adapter, surface, device, queue, surface format and surface config
         let gpu_context = GpuContext::new(window.clone()).await?;
 
-        // Create texture manager handling the texture
-        let texture_manager = TextureManager::new(
-            &gpu_context.device,
-            gpu_context.surface_format,
-            width,
-            height,
+        // Create particle buffer
+        // Each particle is 1 byte (u8)
+        let buffer_size = (initial_particle_grid.len()) as u64;
+        let particle_grid_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Particle Buffer"),
+            size: buffer_size,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Write initial particle data to buffer
+        gpu_context.queue.write_buffer(
+            &particle_grid_buffer,
+            0,
+            &initial_particle_grid, // cast not needed, since already &[u8]
         );
+
+        // Create grid dimensions uniform buffer
+        let grid_dims_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Grid Dimensions Buffer"),
+            size: 8, // 2 * u32
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Write grid dimensions to buffer
+        gpu_context.queue.write_buffer(
+            &grid_dims_buffer,
+            0,
+            bytemuck::cast_slice(&[width, height]),
+        );
+
+        // Load shader
+        let shader = gpu_context
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("Particle Shader"),
+                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+            });
+
+        // Create bind group layout
+        let bind_group_layout =
+            gpu_context
+                .device
+                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                    label: Some("Particle Bind Group Layout"),
+                    entries: &[
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 0,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Storage { read_only: true },
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                        wgpu::BindGroupLayoutEntry {
+                            binding: 1,
+                            visibility: wgpu::ShaderStages::FRAGMENT,
+                            ty: wgpu::BindingType::Buffer {
+                                ty: wgpu::BufferBindingType::Uniform,
+                                has_dynamic_offset: false,
+                                min_binding_size: None,
+                            },
+                            count: None,
+                        },
+                    ],
+                });
+
+        // Create bind group
+        let bind_group = gpu_context
+            .device
+            .create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("Particle Bind Group"),
+                layout: &bind_group_layout,
+                entries: &[
+                    wgpu::BindGroupEntry {
+                        binding: 0,
+                        resource: particle_grid_buffer.as_entire_binding(),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 1,
+                        resource: grid_dims_buffer.as_entire_binding(),
+                    },
+                ],
+            });
+
+        // Create render pipeline layout
+        let pipeline_layout =
+            gpu_context
+                .device
+                .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Render Pipeline Layout"),
+                    bind_group_layouts: &[&bind_group_layout],
+                    immediate_size: 0,
+                });
+
+        // Create render pipeline
+        let render_pipeline =
+            gpu_context
+                .device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("Render Pipeline"),
+                    layout: Some(&pipeline_layout),
+                    vertex: wgpu::VertexState {
+                        module: &shader,
+                        entry_point: Some("vs_main"),
+                        buffers: &[],
+                        compilation_options: wgpu::PipelineCompilationOptions::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &shader,
+                        entry_point: Some("fs_main"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: gpu_context.surface_format,
+                            blend: Some(wgpu::BlendState::REPLACE),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: Default::default(),
+                    }),
+                    // The primitive field describes how to interpret our vertices when converting them into triangles.
+                    primitive: wgpu::PrimitiveState {
+                        // every three vertices will correspond to one triangle
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        strip_index_format: None,
+                        front_face: wgpu::FrontFace::Ccw,
+                        cull_mode: None,
+                        polygon_mode: wgpu::PolygonMode::Fill,
+                        unclipped_depth: false,
+                        conservative: false,
+                    },
+                    depth_stencil: None,
+                    multisample: wgpu::MultisampleState {
+                        count: 1,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview_mask: None,
+                    cache: None,
+                });
 
         Ok(Self {
             gpu_context,
             is_surface_configured: false,
             window,
-            texture_manager,
-            particle_grid,
+            particle_grid_buffer,
+            render_pipeline,
+            bind_group,
+            grid_dims_buffer,
+            grid_width: width,
+            grid_height: height,
         })
     }
 
@@ -56,15 +199,13 @@ impl State {
             return Ok(());
         }
 
-        self.texture_manager
-            .update_from_particles(&self.gpu_context.queue, &self.particle_grid);
-
-        // The get_current_texture function will wait for the surface
-        // to provide a new SurfaceTexture that we will render to.
+        // Get the current surface texture
         let output = self.gpu_context.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Create a CommandEncoder to create the actual commands to send to the GPU.
-        // The encoder builds a command buffer that we can then send to the GPU.
+        // Create a CommandEncoder
         let mut encoder =
             self.gpu_context
                 .device
@@ -72,14 +213,36 @@ impl State {
                     label: Some("Render Encoder"),
                 });
 
-        // Copy texture to surface
-        encoder.copy_texture_to_texture(
-            self.texture_manager.texture().as_image_copy(),
-            output.texture.as_image_copy(),
-            self.texture_manager.extent(),
-        );
+        // Create render pass
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+                multiview_mask: None,
+            });
 
-        // submit will accept anything that implements IntoIter
+            render_pass.set_pipeline(&self.render_pipeline);
+            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.draw(0..3, 0..1); // Draw full-screen triangle
+        }
+
+        // Submit commands and present
         self.gpu_context
             .queue
             .submit(std::iter::once(encoder.finish()));
