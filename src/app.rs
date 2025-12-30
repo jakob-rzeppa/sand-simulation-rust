@@ -1,17 +1,23 @@
 use crate::state::State;
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
+use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
 pub(crate) struct App {
     state: Option<State>,
+    cursor_position: Option<(f64, f64)>,
+    left_mouse_button_pressed: bool,
 }
 
 impl Default for App {
     fn default() -> Self {
-        Self { state: None }
+        Self {
+            state: None,
+            cursor_position: None,
+            left_mouse_button_pressed: false,
+        }
     }
 }
 
@@ -79,7 +85,24 @@ impl ApplicationHandler for App {
                 event_loop.exit()
             }
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_position = Some((position.x, position.y));
+            }
+            WindowEvent::MouseInput {
+                state: element_state,
+                button: MouseButton::Left,
+                ..
+            } => {
+                self.left_mouse_button_pressed = element_state == ElementState::Pressed;
+            }
             WindowEvent::RedrawRequested => {
+                // Add sand if mouse is held down
+                if self.left_mouse_button_pressed {
+                    if let Some((x, y)) = self.cursor_position {
+                        state.add_sand_at_cursor(x, y);
+                    }
+                }
+                
                 match state.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated

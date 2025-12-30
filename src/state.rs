@@ -1,7 +1,7 @@
 use crate::buffers::ParticleBuffers;
 use crate::gpu_context::GpuContext;
 use crate::simulate::simulate_particles;
-use crate::MS_PER_SIMULATION;
+use crate::{MS_PER_SIMULATION, RADIUS_ADD_PARTICLES};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::window::Window;
@@ -127,6 +127,39 @@ impl State {
 
     pub fn set_simulation_speed(&mut self, updates_per_second: u32) {
         self.update_interval = Duration::from_secs_f32(1.0 / updates_per_second as f32);
+    }
+
+    pub fn add_sand_at_cursor(&mut self, cursor_x: f64, cursor_y: f64) {
+        let window_size = self.window.inner_size();
+
+        // Convert cursor position to grid coordinates
+        let grid_x = ((cursor_x / window_size.width as f64)
+            * self.particle_buffers.grid_width as f64) as i32;
+        let grid_y = ((cursor_y / window_size.height as f64)
+            * self.particle_buffers.grid_height as f64) as i32;
+
+        let radius = RADIUS_ADD_PARTICLES as i32;
+
+        // Add sand in a circle around the cursor
+        for dy in -radius..=radius {
+            for dx in -radius..=radius {
+                // Check if point is within circle
+                if dx * dx + dy * dy <= radius * radius {
+                    let x = grid_x + dx;
+                    let y = grid_y + dy;
+
+                    // Check bounds
+                    if x >= 0
+                        && x < self.particle_buffers.grid_width as i32
+                        && y >= 0
+                        && y < self.particle_buffers.grid_height as i32
+                    {
+                        let index = (y * self.particle_buffers.grid_width as i32 + x) as usize;
+                        self.particle_grid[index] = 1u8;
+                    }
+                }
+            }
+        }
     }
 
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {

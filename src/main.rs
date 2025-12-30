@@ -8,6 +8,7 @@ mod simulate;
 mod state;
 
 const MS_PER_SIMULATION: u64 = 50; // Update simulation every 50ms (20 updates/sec)
+const RADIUS_ADD_PARTICLES: u32 = 15;
 
 fn main() {
     // When wgpu hits any error, it panics with a generic message,
