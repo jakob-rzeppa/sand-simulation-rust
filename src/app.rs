@@ -1,4 +1,5 @@
 use crate::state::State;
+use crate::{HEIGHT, WIDTH};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
@@ -36,24 +37,11 @@ impl ApplicationHandler for App {
             }
         };
 
-        // temporary solution to init the particles
-        let particles_map_width: u32 = 300;
-        let particles_map_height: u32 = 200;
-        let mut particles_map = vec![0u8; (particles_map_height * particles_map_width) as usize];
-
-        // Fill the upper half with sand
-        for y in 0..(particles_map_height / 2) {
-            for x in 0..particles_map_width {
-                let index = (y * particles_map_width + x) as usize;
-                particles_map[index] = 1u8;
-            }
-        }
-
         self.state = match pollster::block_on(State::new(
             window,
-            particles_map,
-            particles_map_width,
-            particles_map_height,
+            vec![0u8; (WIDTH * HEIGHT) as usize],
+            WIDTH,
+            HEIGHT,
         )) {
             Ok(state) => Some(state),
             Err(e) => {
@@ -102,7 +90,7 @@ impl ApplicationHandler for App {
                         state.add_sand_at_cursor(x, y);
                     }
                 }
-                
+
                 match state.render() {
                     Ok(_) => {}
                     // Reconfigure the surface if it's lost or outdated
