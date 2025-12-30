@@ -1,3 +1,4 @@
+use crate::particle::Particle;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -8,10 +9,18 @@ pub struct State {
     config: wgpu::SurfaceConfiguration,
     is_surface_configured: bool,
     pub(crate) window: Arc<Window>,
+    texture: wgpu::Texture,
+    texture_extent: wgpu::Extent3d,
+    particle_data: Vec<u8>, // the bgra encoded particles
 }
 
 impl State {
-    pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    pub async fn new(
+        window: Arc<Window>,
+        particles: &[Particle],
+        width: u32,
+        height: u32,
+    ) -> anyhow::Result<Self> {
         // The instance is a handle to our GPU -> its main purpose is to create the surface and adapter
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
@@ -57,7 +66,7 @@ impl State {
             .copied()
             .unwrap_or(surface_caps.formats[0]);
         let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format: surface_format,
             width: window.inner_size().width,
             height: window.inner_size().height,
@@ -67,6 +76,29 @@ impl State {
             desired_maximum_frame_latency: 2,
         };
 
+        let texture_extent = wgpu::Extent3d {
+            width,
+            height,
+            depth_or_array_layers: 1,
+        };
+
+        // Create texture to hold particles
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("Particle Texture"),
+            size: texture_extent,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: surface_format,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+
+        // Convert particles to BGRA bytes (to match surface format)
+        let particle_data: Vec<u8> = particles.iter().flat_map(|p| p.to_bgra()).collect();
+
         Ok(Self {
             surface,
             device,
@@ -74,6 +106,9 @@ impl State {
             config,
             is_surface_configured: false,
             window,
+            texture,
+            texture_extent,
+            particle_data,
         })
     }
 
@@ -92,14 +127,21 @@ impl State {
             return Ok(());
         }
 
+        // Write particle data to texture
+        self.queue.write_texture(
+            self.texture.as_image_copy(),
+            &self.particle_data,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Option::from(4 * self.texture_extent.width),
+                rows_per_image: Option::from(self.texture_extent.height),
+            },
+            self.texture_extent,
+        );
+
         // The get_current_texture function will wait for the surface
         // to provide a new SurfaceTexture that we will render to.
         let output = self.surface.get_current_texture()?;
-
-        // Texture views are needed to use a texture as a binding in a BindGroup or as an attachment in a RenderPass.
-        let view = output
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Create a CommandEncoder to create the actual commands to send to the GPU.
         // The encoder builds a command buffer that we can then send to the GPU.
@@ -109,30 +151,12 @@ impl State {
                 label: Some("Render Encoder"),
             });
 
-        // begin_render_pass() borrows encoder mutably and encoder.finish() can't be called until the mut ref is released
-        {
-            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("Render Pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                occlusion_query_set: None,
-                timestamp_writes: None,
-                multiview_mask: None,
-            });
-        }
+        // Copy texture to surface
+        encoder.copy_texture_to_texture(
+            self.texture.as_image_copy(),
+            output.texture.as_image_copy(),
+            self.texture_extent,
+        );
 
         // submit will accept anything that implements IntoIter
         self.queue.submit(std::iter::once(encoder.finish()));
