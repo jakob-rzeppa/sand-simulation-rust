@@ -5,6 +5,7 @@ mod app;
 mod gpu_context;
 mod particle;
 mod state;
+mod texture_manager;
 
 fn main() {
     // When wgpu hits any error, it panics with a generic message,
