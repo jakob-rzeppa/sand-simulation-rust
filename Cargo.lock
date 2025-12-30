@@ -1503,7 +1503,6 @@ dependencies = [
  "env_logger",
  "log",
  "pollster",
- "thiserror 2.0.17",
  "wgpu",
  "winit",
 ]
