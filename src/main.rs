@@ -1,10 +1,13 @@
 use crate::app::App;
-use winit::event_loop::{ControlFlow, EventLoop};
+use winit::event_loop::EventLoop;
 
 mod app;
 mod buffers;
 mod gpu_context;
+mod simulate;
 mod state;
+
+const MS_PER_SIMULATION: u64 = 50; // Update simulation every 50ms (20 updates/sec)
 
 fn main() {
     // When wgpu hits any error, it panics with a generic message,
@@ -19,10 +22,6 @@ fn main() {
             return;
         }
     };
-
-    // ControlFlow::Poll continuously runs the event loop,
-    // even if the OS hasn't dispatched any events.
-    event_loop.set_control_flow(ControlFlow::Poll);
 
     let mut app = App::default();
     match event_loop.run_app(&mut app) {

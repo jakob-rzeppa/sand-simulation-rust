@@ -1,6 +1,9 @@
 use crate::buffers::ParticleBuffers;
 use crate::gpu_context::GpuContext;
+use crate::simulate::simulate_particles;
+use crate::MS_PER_SIMULATION;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use winit::window::Window;
 
 pub struct State {
@@ -12,6 +15,10 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
 
     particle_buffers: ParticleBuffers,
+    particle_grid: Vec<u8>,
+
+    last_update: Instant,
+    update_interval: Duration,
 }
 
 impl State {
@@ -28,7 +35,7 @@ impl State {
         let particle_buffers = ParticleBuffers::new(
             &gpu_context.device,
             &gpu_context.queue,
-            initial_particle_grid,
+            initial_particle_grid.clone(),
             width,
             height,
         );
@@ -101,6 +108,9 @@ impl State {
             window,
             render_pipeline,
             particle_buffers,
+            particle_grid: initial_particle_grid,
+            last_update: Instant::now(),
+            update_interval: Duration::from_millis(MS_PER_SIMULATION),
         })
     }
 
@@ -115,10 +125,33 @@ impl State {
         }
     }
 
+    pub fn set_simulation_speed(&mut self, updates_per_second: u32) {
+        self.update_interval = Duration::from_secs_f32(1.0 / updates_per_second as f32);
+    }
+
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         // We can't render unless the surface is configured
         if !self.is_surface_configured {
             return Ok(());
+        }
+
+        // Only simulate if enough time has passed
+        let now = Instant::now();
+        if now.duration_since(self.last_update) >= self.update_interval {
+            let updated_data = simulate_particles(
+                &mut self.particle_grid,
+                self.particle_buffers.grid_height,
+                self.particle_buffers.grid_width,
+            );
+
+            // Update GPU buffer with simulated data
+            self.gpu_context.queue.write_buffer(
+                &self.particle_buffers.particle_grid_buffer,
+                0,
+                updated_data,
+            );
+
+            self.last_update = now;
         }
 
         // Get the current surface texture
