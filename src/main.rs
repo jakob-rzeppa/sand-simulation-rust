@@ -2,6 +2,7 @@ use crate::app::App;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
+mod gpu_context;
 mod particle;
 mod state;
 
