@@ -1,3 +1,4 @@
+use crate::buffers::ParticleBuffers;
 use crate::gpu_context::GpuContext;
 use std::sync::Arc;
 use winit::window::Window;
@@ -10,11 +11,7 @@ pub struct State {
 
     render_pipeline: wgpu::RenderPipeline,
 
-    bind_group: wgpu::BindGroup,
-    particle_grid_buffer: wgpu::Buffer, // GPU buffer for the particles in a grid
-    grid_dims_buffer: wgpu::Buffer,
-    grid_width: u32,
-    grid_height: u32,
+    particle_buffers: ParticleBuffers,
 }
 
 impl State {
@@ -27,36 +24,13 @@ impl State {
         // Create gpu context containing the gpu instance, adapter, surface, device, queue, surface format and surface config
         let gpu_context = GpuContext::new(window.clone()).await?;
 
-        // Create particle buffer
-        // Each particle is 1 byte (u8)
-        let buffer_size = (initial_particle_grid.len()) as u64;
-        let particle_grid_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Particle Buffer"),
-            size: buffer_size,
-            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Write initial particle data to buffer
-        gpu_context.queue.write_buffer(
-            &particle_grid_buffer,
-            0,
-            &initial_particle_grid, // cast not needed, since already &[u8]
-        );
-
-        // Create grid dimensions uniform buffer
-        let grid_dims_buffer = gpu_context.device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Grid Dimensions Buffer"),
-            size: 8, // 2 * u32
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-
-        // Write grid dimensions to buffer
-        gpu_context.queue.write_buffer(
-            &grid_dims_buffer,
-            0,
-            bytemuck::cast_slice(&[width, height]),
+        // Create particle buffers and bind group
+        let particle_buffers = ParticleBuffers::new(
+            &gpu_context.device,
+            &gpu_context.queue,
+            initial_particle_grid,
+            width,
+            height,
         );
 
         // Load shader
@@ -67,61 +41,13 @@ impl State {
                 source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
             });
 
-        // Create bind group layout
-        let bind_group_layout =
-            gpu_context
-                .device
-                .create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                    label: Some("Particle Bind Group Layout"),
-                    entries: &[
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 0,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Storage { read_only: true },
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                        wgpu::BindGroupLayoutEntry {
-                            binding: 1,
-                            visibility: wgpu::ShaderStages::FRAGMENT,
-                            ty: wgpu::BindingType::Buffer {
-                                ty: wgpu::BufferBindingType::Uniform,
-                                has_dynamic_offset: false,
-                                min_binding_size: None,
-                            },
-                            count: None,
-                        },
-                    ],
-                });
-
-        // Create bind group
-        let bind_group = gpu_context
-            .device
-            .create_bind_group(&wgpu::BindGroupDescriptor {
-                label: Some("Particle Bind Group"),
-                layout: &bind_group_layout,
-                entries: &[
-                    wgpu::BindGroupEntry {
-                        binding: 0,
-                        resource: particle_grid_buffer.as_entire_binding(),
-                    },
-                    wgpu::BindGroupEntry {
-                        binding: 1,
-                        resource: grid_dims_buffer.as_entire_binding(),
-                    },
-                ],
-            });
-
         // Create render pipeline layout
         let pipeline_layout =
             gpu_context
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&bind_group_layout],
+                    bind_group_layouts: &[&particle_buffers.bind_group_layout],
                     immediate_size: 0,
                 });
 
@@ -173,12 +99,8 @@ impl State {
             gpu_context,
             is_surface_configured: false,
             window,
-            particle_grid_buffer,
             render_pipeline,
-            bind_group,
-            grid_dims_buffer,
-            grid_width: width,
-            grid_height: height,
+            particle_buffers,
         })
     }
 
@@ -238,7 +160,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.bind_group, &[]);
+            render_pass.set_bind_group(0, &self.particle_buffers.bind_group, &[]);
             render_pass.draw(0..3, 0..1); // Draw full-screen triangle
         }
 
