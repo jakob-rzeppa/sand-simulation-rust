@@ -1,5 +1,4 @@
 use crate::app::App;
-use log::error;
 use winit::event_loop::{ControlFlow, EventLoop};
 
 mod app;
@@ -14,7 +13,7 @@ fn main() {
     let event_loop = match EventLoop::new() {
         Ok(event_loop) => event_loop,
         Err(e) => {
-            error!("Creating EventLoop failed: {}", e);
+            log::error!("Creating EventLoop failed: {}", e);
             return;
         }
     };
@@ -27,7 +26,7 @@ fn main() {
     match event_loop.run_app(&mut app) {
         Ok(_) => (),
         Err(e) => {
-            error!("Running app failed {}", e.to_string());
+            log::error!("Running app failed {}", e.to_string());
         }
     }
 }

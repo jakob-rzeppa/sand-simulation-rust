@@ -1,4 +1,3 @@
-use log::info;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -78,11 +77,67 @@ impl State {
         })
     }
 
-    pub fn resize(&mut self, _width: u32, _height: u32) {
-        info!("resized");
+    pub fn resize(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 {
+            self.config.width = width;
+            self.config.height = height;
+            self.surface.configure(&self.device, &self.config);
+            self.is_surface_configured = true;
+        }
     }
 
-    pub fn render(&mut self) {
-        info!("rendered");
+    pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        // We can't render unless the surface is configured
+        if !self.is_surface_configured {
+            return Ok(());
+        }
+
+        // The get_current_texture function will wait for the surface
+        // to provide a new SurfaceTexture that we will render to.
+        let output = self.surface.get_current_texture()?;
+
+        // Texture views are needed to use a texture as a binding in a BindGroup or as an attachment in a RenderPass.
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        // Create a CommandEncoder to create the actual commands to send to the GPU.
+        // The encoder builds a command buffer that we can then send to the GPU.
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        // begin_render_pass() borrows encoder mutably and encoder.finish() can't be called until the mut ref is released
+        {
+            let _render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &view,
+                    depth_slice: None,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.1,
+                            g: 0.2,
+                            b: 0.3,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+                multiview_mask: None,
+            });
+        }
+
+        // submit will accept anything that implements IntoIter
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
     }
 }

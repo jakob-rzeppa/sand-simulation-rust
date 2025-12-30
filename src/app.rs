@@ -1,5 +1,4 @@
 use crate::state::State;
-use log::{debug, error, info, warn};
 use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
@@ -25,7 +24,7 @@ impl ApplicationHandler for App {
         let window = match event_loop.create_window(window_attributes) {
             Ok(window) => Arc::new(window),
             Err(e) => {
-                error!("Creating window failed: {}", e.to_string());
+                log::error!("Creating window failed: {}", e.to_string());
                 event_loop.exit();
                 return;
             }
@@ -34,7 +33,7 @@ impl ApplicationHandler for App {
         self.state = match pollster::block_on(State::new(window)) {
             Ok(state) => Some(state),
             Err(e) => {
-                error!("Failed to create state: {}", e);
+                log::error!("Failed to create state: {}", e);
                 event_loop.exit();
                 return;
             }
@@ -45,25 +44,35 @@ impl ApplicationHandler for App {
         let state = match &mut self.state {
             Some(canvas) => canvas,
             None => {
-                warn!("Window event couldn't find state");
+                log::warn!("Window event couldn't find state");
                 return;
             }
         };
 
         // only handle event if WindowId of event is the same as the windows
         if id != state.window.id() {
-            warn!("Window event id does not match the window id");
+            log::warn!("Window event id does not match the window id");
             return;
         }
 
         match event {
             WindowEvent::CloseRequested => {
-                debug!("Window close requested");
+                log::debug!("Window close requested");
                 event_loop.exit()
             }
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::RedrawRequested => {
-                state.render();
+                match state.render() {
+                    Ok(_) => {}
+                    // Reconfigure the surface if it's lost or outdated
+                    Err(wgpu::SurfaceError::Lost | wgpu::SurfaceError::Outdated) => {
+                        let size = state.window.inner_size();
+                        state.resize(size.width, size.height);
+                    }
+                    Err(e) => {
+                        log::error!("Unable to render {}", e);
+                    }
+                }
 
                 // queue next redraw
                 state.window.request_redraw();
