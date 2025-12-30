@@ -35,8 +35,8 @@ impl ApplicationHandler for App {
         let particles_map_height: u32 = 200;
         let mut particles_map = vec![0u8; (particles_map_height * particles_map_width) as usize];
 
-        // Fill the lower half with sand
-        for y in (particles_map_height / 2)..particles_map_height {
+        // Fill the upper half with sand
+        for y in 0..(particles_map_height / 2) {
             for x in 0..particles_map_width {
                 let index = (y * particles_map_width + x) as usize;
                 particles_map[index] = 1u8;
