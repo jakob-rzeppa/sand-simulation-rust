@@ -11,13 +11,13 @@ pub struct State {
     pub(crate) window: Arc<Window>,
     texture: wgpu::Texture,
     texture_extent: wgpu::Extent3d,
-    particle_data: Vec<u8>, // the bgra encoded particles
+    particle_grid: Vec<Particle>, // the particles in a grid
 }
 
 impl State {
     pub async fn new(
         window: Arc<Window>,
-        particles: &[Particle],
+        particle_grid: Vec<Particle>,
         width: u32,
         height: u32,
     ) -> anyhow::Result<Self> {
@@ -96,9 +96,6 @@ impl State {
             view_formats: &[],
         });
 
-        // Convert particles to BGRA bytes (to match surface format)
-        let particle_data: Vec<u8> = particles.iter().flat_map(|p| p.to_bgra()).collect();
-
         Ok(Self {
             surface,
             device,
@@ -108,7 +105,7 @@ impl State {
             window,
             texture,
             texture_extent,
-            particle_data,
+            particle_grid,
         })
     }
 
@@ -127,10 +124,17 @@ impl State {
             return Ok(());
         }
 
+        // Convert particles to BGRA bytes (to match surface format)
+        let particle_data: Vec<u8> = self
+            .particle_grid
+            .iter()
+            .flat_map(|p| p.to_bgra())
+            .collect();
+
         // Write particle data to texture
         self.queue.write_texture(
             self.texture.as_image_copy(),
-            &self.particle_data,
+            &particle_data,
             wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Option::from(4 * self.texture_extent.width),

@@ -47,7 +47,7 @@ impl ApplicationHandler for App {
 
         self.state = match pollster::block_on(State::new(
             window,
-            &particles_map,
+            particles_map,
             particles_map_width,
             particles_map_height,
         )) {
