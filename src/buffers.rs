@@ -55,7 +55,11 @@ impl ParticleBuffers {
         });
 
         // Initialize mouse position to center of screen
-        queue.write_buffer(&mouse_position_buffer, 0, bytemuck::cast_slice(&[0.5f32, 0.5f32]));
+        queue.write_buffer(
+            &mouse_position_buffer,
+            0,
+            bytemuck::cast_slice(&[-1f32, -1f32]),
+        );
 
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -127,6 +131,10 @@ impl ParticleBuffers {
 
     /// Update the mouse position buffer with normalized coordinates (0.0 to 1.0)
     pub fn update_mouse_position(&self, queue: &wgpu::Queue, x: f32, y: f32) {
-        queue.write_buffer(&self.mouse_position_buffer, 0, bytemuck::cast_slice(&[x, y]));
+        queue.write_buffer(
+            &self.mouse_position_buffer,
+            0,
+            bytemuck::cast_slice(&[x, y]),
+        );
     }
 }
