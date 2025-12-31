@@ -6,9 +6,10 @@ pub fn simulate_particles(particle_grid: &mut [u8], height: u32, width: u32) -> 
     for y in (0..height - 1).rev() {
         for x in 0..width {
             let idx: usize = (y * width + x) as usize;
-            // If there's a particle here and the space below is empty, move it down
+            // Sand
             if particle_grid[idx] == 1 {
-                if (particle_grid[idx + width /* last row is never checked */] == 0) {
+                // Try to move down
+                if particle_grid[idx + width] == 0 {
                     particle_grid[idx] = 0;
                     particle_grid[idx + width] = 1;
                 }
@@ -21,6 +22,14 @@ pub fn simulate_particles(particle_grid: &mut [u8], height: u32, width: u32) -> 
                 else if x > 0 && particle_grid[idx + width - 1] == 0 {
                     particle_grid[idx] = 0;
                     particle_grid[idx + width - 1] = 1;
+                }
+            }
+            // Stone
+            else if particle_grid[idx] == 2 {
+                // Try to move down
+                if particle_grid[idx + width] == 0 {
+                    particle_grid[idx] = 0;
+                    particle_grid[idx + width] = 2;
                 }
             }
         }

@@ -53,6 +53,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     if (particle_type == 1u) {
         // Sand - sandy color
         color = vec4<f32>(0.76, 0.70, 0.50, 1.0);
+    } else if (particle_type == 2u) {
+        // Stone - gray color
+        color = vec4<f32>(0.57, 0.56, 0.52, 1.0);
     }
 
     // Make circle around mouse darker (only if mouse is in window)
