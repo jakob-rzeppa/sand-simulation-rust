@@ -12,6 +12,10 @@ var<storage, read> particles: array<u32>;
 @group(0) @binding(1)
 var<uniform> grid_dims: vec2<u32>;
 
+// Mouse position in normalized coordinates (0.0 to 1.0)
+@group(0) @binding(2)
+var<uniform> mouse_pos: vec2<f32>;
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;
@@ -42,13 +46,34 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     
     // Extract the byte we need
     let particle_type = (word >> (byte_offset * 8u)) & 0xFFu;
+
+    // Base color based on particle type
+    var color = vec4<f32>(1.0, 1.0, 1.0, 1.0);  // Air - white
     
-    // Return color based on particle type
-    if (particle_type == 0u) {
-        // Air - white
-        return vec4<f32>(1.0, 1.0, 1.0, 1.0);
-    } else {
+    if (particle_type == 1u) {
         // Sand - sandy color
-        return vec4<f32>(0.76, 0.70, 0.50, 1.0);
+        color = vec4<f32>(0.76, 0.70, 0.50, 1.0);
     }
+
+    // Make circle around mouse darker (only if mouse is in window)
+    // Mouse position is set to negative values when outside window
+    if (mouse_pos.x >= 0.0 && mouse_pos.y >= 0.0) {
+        let radius = 15.0;
+        
+        // Convert mouse position from normalized coords to grid coords
+        let mouse_grid_x = mouse_pos.x * f32(grid_dims.x);
+        let mouse_grid_y = mouse_pos.y * f32(grid_dims.y);
+        
+        // Calculate distance from current pixel to mouse position
+        let dx = f32(pixel_x) - mouse_grid_x;
+        let dy = f32(pixel_y) - mouse_grid_y;
+        let distance = sqrt(dx * dx + dy * dy);
+        
+        // If within radius, darken the color
+        if (distance <= radius) {
+            color = color * 0.7;  // Darken by multiplying by 0.7
+        }
+    }
+
+    return color;
 }

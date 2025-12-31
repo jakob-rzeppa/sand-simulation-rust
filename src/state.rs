@@ -129,6 +129,17 @@ impl State {
         self.update_interval = Duration::from_secs_f32(1.0 / updates_per_second as f32);
     }
 
+    pub fn update_mouse_position(&mut self, cursor_x: f64, cursor_y: f64) {
+        let window_size = self.window.inner_size();
+        
+        // Convert to normalized coordinates (0.0 to 1.0)
+        let normalized_x = (cursor_x / window_size.width as f64) as f32;
+        let normalized_y = (cursor_y / window_size.height as f64) as f32;
+        
+        // Update GPU buffer
+        self.particle_buffers.update_mouse_position(&self.gpu_context.queue, normalized_x, normalized_y);
+    }
+
     pub fn add_sand_at_cursor(&mut self, cursor_x: f64, cursor_y: f64) {
         let window_size = self.window.inner_size();
 

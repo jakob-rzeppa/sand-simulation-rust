@@ -3,6 +3,7 @@ use wgpu;
 pub struct ParticleBuffers {
     pub particle_grid_buffer: wgpu::Buffer,
     pub grid_dims_buffer: wgpu::Buffer,
+    pub mouse_position_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
     pub grid_width: u32,
@@ -45,6 +46,17 @@ impl ParticleBuffers {
         // Write grid dimensions to buffer
         queue.write_buffer(&grid_dims_buffer, 0, bytemuck::cast_slice(&[width, height]));
 
+        // Create mouse position buffer (2 floats: x, y in normalized coordinates)
+        let mouse_position_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Mouse Position Buffer"),
+            size: 8, // 2 * f32
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Initialize mouse position to center of screen
+        queue.write_buffer(&mouse_position_buffer, 0, bytemuck::cast_slice(&[0.5f32, 0.5f32]));
+
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Particle Bind Group Layout"),
@@ -69,6 +81,16 @@ impl ParticleBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -85,16 +107,26 @@ impl ParticleBuffers {
                     binding: 1,
                     resource: grid_dims_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: mouse_position_buffer.as_entire_binding(),
+                },
             ],
         });
 
         Self {
             particle_grid_buffer,
             grid_dims_buffer,
+            mouse_position_buffer,
             bind_group,
             bind_group_layout,
             grid_width: width,
             grid_height: height,
         }
+    }
+
+    /// Update the mouse position buffer with normalized coordinates (0.0 to 1.0)
+    pub fn update_mouse_position(&self, queue: &wgpu::Queue, x: f32, y: f32) {
+        queue.write_buffer(&self.mouse_position_buffer, 0, bytemuck::cast_slice(&[x, y]));
     }
 }

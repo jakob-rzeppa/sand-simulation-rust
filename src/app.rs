@@ -75,7 +75,14 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => state.resize(size.width, size.height),
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = Some((position.x, position.y));
-            }
+                // Update mouse position buffer in GPU
+                state.update_mouse_position(position.x, position.y);
+            },
+            WindowEvent::CursorLeft { .. } => {
+                self.cursor_position = None;
+                // Set mouse position outside viewport to hide the circle
+                state.update_mouse_position(-1.0, -1.0);
+            },
             WindowEvent::MouseInput {
                 state: element_state,
                 button: MouseButton::Left,
