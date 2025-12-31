@@ -4,6 +4,7 @@ use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, WindowEvent};
 use winit::event_loop::ActiveEventLoop;
+use winit::keyboard::{Key, NamedKey};
 use winit::window::{Window, WindowId};
 
 pub(crate) struct App {
@@ -77,12 +78,12 @@ impl ApplicationHandler for App {
                 self.cursor_position = Some((position.x, position.y));
                 // Update mouse position buffer in GPU
                 state.update_mouse_position(position.x, position.y);
-            },
+            }
             WindowEvent::CursorLeft { .. } => {
                 self.cursor_position = None;
                 // Set mouse position outside viewport to hide the circle
                 state.update_mouse_position(-1.0, -1.0);
-            },
+            }
             WindowEvent::MouseInput {
                 state: element_state,
                 button: MouseButton::Left,
@@ -90,11 +91,24 @@ impl ApplicationHandler for App {
             } => {
                 self.left_mouse_button_pressed = element_state == ElementState::Pressed;
             }
+            WindowEvent::KeyboardInput { event, .. } => {
+                if event.state == ElementState::Pressed {
+                    match event.logical_key {
+                        Key::Named(NamedKey::ArrowUp) | Key::Named(NamedKey::ArrowRight) => {
+                            state.cycle_material_up();
+                        }
+                        Key::Named(NamedKey::ArrowDown) | Key::Named(NamedKey::ArrowLeft) => {
+                            state.cycle_material_down();
+                        }
+                        _ => {}
+                    }
+                }
+            }
             WindowEvent::RedrawRequested => {
                 // Add sand if mouse is held down
                 if self.left_mouse_button_pressed {
                     if let Some((x, y)) = self.cursor_position {
-                        state.add_sand_at_cursor(x, y);
+                        state.add_material_at_cursor(x, y);
                     }
                 }
 

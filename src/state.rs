@@ -17,6 +17,9 @@ pub struct State {
     particle_buffers: ParticleBuffers,
     particle_grid: Vec<u8>,
 
+    // the currently selected material to be created when clicking
+    selected_material: u8,
+
     last_update: Instant,
     update_interval: Duration,
 }
@@ -109,6 +112,7 @@ impl State {
             render_pipeline,
             particle_buffers,
             particle_grid: initial_particle_grid,
+            selected_material: 1, // initialize to sand
             last_update: Instant::now(),
             update_interval: Duration::from_millis(MS_PER_SIMULATION),
         })
@@ -144,7 +148,31 @@ impl State {
         );
     }
 
-    pub fn add_sand_at_cursor(&mut self, cursor_x: f64, cursor_y: f64) {
+    pub fn change_material(&mut self, material: u8) {
+        self.selected_material = material;
+        self.particle_buffers
+            .update_selected_material(&self.gpu_context.queue, material);
+    }
+
+    pub fn cycle_material_up(&mut self) {
+        // Cycle through materials: 0 (air) -> 1 (sand) -> 2 (stone) -> 0
+        self.selected_material = (self.selected_material + 1) % 3;
+        self.particle_buffers
+            .update_selected_material(&self.gpu_context.queue, self.selected_material);
+    }
+
+    pub fn cycle_material_down(&mut self) {
+        // Cycle backwards: 0 (air) -> 2 (stone) -> 1 (sand) -> 0
+        self.selected_material = if self.selected_material == 0 {
+            2
+        } else {
+            self.selected_material - 1
+        };
+        self.particle_buffers
+            .update_selected_material(&self.gpu_context.queue, self.selected_material);
+    }
+
+    pub fn add_material_at_cursor(&mut self, cursor_x: f64, cursor_y: f64) {
         let window_size = self.window.inner_size();
 
         // Convert cursor position to grid coordinates
@@ -155,7 +183,7 @@ impl State {
 
         let radius = RADIUS_ADD_PARTICLES as i32;
 
-        // Add sand in a circle around the cursor
+        // Add the selected material in a circle around the cursor
         for dy in -radius..=radius {
             for dx in -radius..=radius {
                 // Check if point is within circle
@@ -170,7 +198,7 @@ impl State {
                         && y < self.particle_buffers.grid_height as i32
                     {
                         let index = (y * self.particle_buffers.grid_width as i32 + x) as usize;
-                        self.particle_grid[index] = 1u8;
+                        self.particle_grid[index] = self.selected_material;
                     }
                 }
             }

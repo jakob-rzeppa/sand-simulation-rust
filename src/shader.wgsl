@@ -16,6 +16,10 @@ var<uniform> grid_dims: vec2<u32>;
 @group(0) @binding(2)
 var<uniform> mouse_pos: vec2<f32>;
 
+// Selected material type
+@group(0) @binding(3)
+var<uniform> selected_material: u32;
+
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
     var out: VertexOutput;

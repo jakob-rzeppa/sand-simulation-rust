@@ -4,6 +4,7 @@ pub struct ParticleBuffers {
     pub particle_grid_buffer: wgpu::Buffer,
     pub grid_dims_buffer: wgpu::Buffer,
     pub mouse_position_buffer: wgpu::Buffer,
+    pub selected_material_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
     pub grid_width: u32,
@@ -61,6 +62,17 @@ impl ParticleBuffers {
             bytemuck::cast_slice(&[-1f32, -1f32]),
         );
 
+        // Create selected material buffer (u32)
+        let selected_material_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("Selected Material Buffer"),
+            size: 4, // 4 * u8 = u32
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Initialize selected material to 1 (sand)
+        queue.write_buffer(&selected_material_buffer, 0, bytemuck::cast_slice(&[1u32]));
+
         // Create bind group layout
         let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("Particle Bind Group Layout"),
@@ -95,6 +107,16 @@ impl ParticleBuffers {
                     },
                     count: None,
                 },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 3,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
             ],
         });
 
@@ -115,6 +137,10 @@ impl ParticleBuffers {
                     binding: 2,
                     resource: mouse_position_buffer.as_entire_binding(),
                 },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: selected_material_buffer.as_entire_binding(),
+                },
             ],
         });
 
@@ -122,6 +148,7 @@ impl ParticleBuffers {
             particle_grid_buffer,
             grid_dims_buffer,
             mouse_position_buffer,
+            selected_material_buffer,
             bind_group,
             bind_group_layout,
             grid_width: width,
@@ -135,6 +162,15 @@ impl ParticleBuffers {
             &self.mouse_position_buffer,
             0,
             bytemuck::cast_slice(&[x, y]),
+        );
+    }
+
+    /// Update the selected material buffer
+    pub fn update_selected_material(&self, queue: &wgpu::Queue, material: u8) {
+        queue.write_buffer(
+            &self.selected_material_buffer,
+            0,
+            bytemuck::cast_slice(&[material as u32]),
         );
     }
 }
