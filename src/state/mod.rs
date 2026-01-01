@@ -1,10 +1,14 @@
-use crate::buffers::Buffers;
-use crate::gpu_context::GpuContext;
-use crate::particle_manager::ParticleManager;
 use crate::MS_PER_SIMULATION;
+use buffers::Buffers;
+use gpu_context::GpuContext;
+use particle_manager::ParticleManager;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::window::Window;
+
+mod buffers;
+mod gpu_context;
+mod particle_manager;
 
 pub struct State {
     pub window: Arc<Window>,
@@ -42,7 +46,7 @@ impl State {
             .device
             .create_shader_module(wgpu::ShaderModuleDescriptor {
                 label: Some("Particle Shader"),
-                source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+                source: wgpu::ShaderSource::Wgsl(include_str!("../shader.wgsl").into()),
             });
 
         // Create render pipeline layout

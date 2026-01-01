@@ -2,9 +2,6 @@ use crate::app::App;
 use winit::event_loop::EventLoop;
 
 mod app;
-mod buffers;
-mod gpu_context;
-mod particle_manager;
 mod state;
 
 const MS_PER_SIMULATION: u64 = 16; // Update simulation every 16ms (~60 updates/sec)
