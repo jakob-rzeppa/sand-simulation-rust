@@ -1,6 +1,6 @@
 use wgpu;
 
-pub struct ParticleBuffers {
+pub struct Buffers {
     pub particle_grid_buffer: wgpu::Buffer,
     pub grid_dims_buffer: wgpu::Buffer,
     pub mouse_position_buffer: wgpu::Buffer,
@@ -11,7 +11,7 @@ pub struct ParticleBuffers {
     pub grid_height: u32,
 }
 
-impl ParticleBuffers {
+impl Buffers {
     pub fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,

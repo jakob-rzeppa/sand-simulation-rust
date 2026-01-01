@@ -1,4 +1,4 @@
-use crate::buffers::ParticleBuffers;
+use crate::buffers::Buffers;
 use crate::gpu_context::GpuContext;
 use crate::simulate::simulate_particles;
 use crate::{MS_PER_SIMULATION, RADIUS_ADD_PARTICLES};
@@ -14,7 +14,7 @@ pub struct State {
 
     render_pipeline: wgpu::RenderPipeline,
 
-    particle_buffers: ParticleBuffers,
+    buffers: Buffers,
     particle_grid: Vec<u8>,
 
     // the currently selected material to be created when clicking
@@ -35,7 +35,7 @@ impl State {
         let gpu_context = GpuContext::new(window.clone()).await?;
 
         // Create particle buffers and bind group
-        let particle_buffers = ParticleBuffers::new(
+        let particle_buffers = Buffers::new(
             &gpu_context.device,
             &gpu_context.queue,
             initial_particle_grid.clone(),
@@ -110,7 +110,7 @@ impl State {
             is_surface_configured: false,
             window,
             render_pipeline,
-            particle_buffers,
+            buffers: particle_buffers,
             particle_grid: initial_particle_grid,
             selected_material: 1, // initialize to sand
             last_update: Instant::now(),
@@ -141,23 +141,20 @@ impl State {
         let normalized_y = (cursor_y / window_size.height as f64) as f32;
 
         // Update GPU buffer
-        self.particle_buffers.update_mouse_position(
-            &self.gpu_context.queue,
-            normalized_x,
-            normalized_y,
-        );
+        self.buffers
+            .update_mouse_position(&self.gpu_context.queue, normalized_x, normalized_y);
     }
 
     pub fn change_material(&mut self, material: u8) {
         self.selected_material = material;
-        self.particle_buffers
+        self.buffers
             .update_selected_material(&self.gpu_context.queue, material);
     }
 
     pub fn cycle_material_up(&mut self) {
         // Cycle through materials: 0 (air) -> 1 (sand) -> 2 (stone) -> 0
         self.selected_material = (self.selected_material + 1) % 3;
-        self.particle_buffers
+        self.buffers
             .update_selected_material(&self.gpu_context.queue, self.selected_material);
     }
 
@@ -168,7 +165,7 @@ impl State {
         } else {
             self.selected_material - 1
         };
-        self.particle_buffers
+        self.buffers
             .update_selected_material(&self.gpu_context.queue, self.selected_material);
     }
 
@@ -176,10 +173,10 @@ impl State {
         let window_size = self.window.inner_size();
 
         // Convert cursor position to grid coordinates
-        let grid_x = ((cursor_x / window_size.width as f64)
-            * self.particle_buffers.grid_width as f64) as i32;
-        let grid_y = ((cursor_y / window_size.height as f64)
-            * self.particle_buffers.grid_height as f64) as i32;
+        let grid_x =
+            ((cursor_x / window_size.width as f64) * self.buffers.grid_width as f64) as i32;
+        let grid_y =
+            ((cursor_y / window_size.height as f64) * self.buffers.grid_height as f64) as i32;
 
         let radius = RADIUS_ADD_PARTICLES as i32;
 
@@ -193,11 +190,11 @@ impl State {
 
                     // Check bounds
                     if x >= 0
-                        && x < self.particle_buffers.grid_width as i32
+                        && x < self.buffers.grid_width as i32
                         && y >= 0
-                        && y < self.particle_buffers.grid_height as i32
+                        && y < self.buffers.grid_height as i32
                     {
-                        let index = (y * self.particle_buffers.grid_width as i32 + x) as usize;
+                        let index = (y * self.buffers.grid_width as i32 + x) as usize;
                         self.particle_grid[index] = self.selected_material;
                     }
                 }
@@ -216,13 +213,13 @@ impl State {
         if now.duration_since(self.last_update) >= self.update_interval {
             let updated_data = simulate_particles(
                 &mut self.particle_grid,
-                self.particle_buffers.grid_height,
-                self.particle_buffers.grid_width,
+                self.buffers.grid_height,
+                self.buffers.grid_width,
             );
 
             // Update GPU buffer with simulated data
             self.gpu_context.queue.write_buffer(
-                &self.particle_buffers.particle_grid_buffer,
+                &self.buffers.particle_grid_buffer,
                 0,
                 updated_data,
             );
@@ -269,7 +266,7 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.particle_buffers.bind_group, &[]);
+            render_pass.set_bind_group(0, &self.buffers.bind_group, &[]);
             render_pass.draw(0..3, 0..1); // Draw full-screen triangle
         }
 
