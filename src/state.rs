@@ -1,7 +1,7 @@
 use crate::buffers::Buffers;
 use crate::gpu_context::GpuContext;
-use crate::simulate::simulate_particles;
-use crate::{MS_PER_SIMULATION, RADIUS_ADD_PARTICLES};
+use crate::particle_manager::ParticleManager;
+use crate::MS_PER_SIMULATION;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use winit::window::Window;
@@ -15,32 +15,26 @@ pub struct State {
     render_pipeline: wgpu::RenderPipeline,
 
     buffers: Buffers,
-    particle_grid: Vec<u8>,
-
-    // the currently selected material to be created when clicking
-    selected_material: u8,
+    particle_manager: ParticleManager,
 
     last_update: Instant,
     update_interval: Duration,
 }
 
 impl State {
-    pub async fn new(
-        window: Arc<Window>,
-        initial_particle_grid: Vec<u8>,
-        width: u32,
-        height: u32,
-    ) -> anyhow::Result<Self> {
+    pub async fn new(window: Arc<Window>, width: u32, height: u32) -> anyhow::Result<Self> {
         // Create gpu context containing the gpu instance, adapter, surface, device, queue, surface format and surface config
         let gpu_context = GpuContext::new(window.clone()).await?;
 
+        let particle_manager = ParticleManager::new(width, height);
+
         // Create particle buffers and bind group
-        let particle_buffers = Buffers::new(
+        let buffers = Buffers::new(
             &gpu_context.device,
             &gpu_context.queue,
-            initial_particle_grid.clone(),
-            width,
-            height,
+            particle_manager.particle_grid().to_vec(),
+            particle_manager.width(),
+            particle_manager.height(),
         );
 
         // Load shader
@@ -57,7 +51,7 @@ impl State {
                 .device
                 .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Render Pipeline Layout"),
-                    bind_group_layouts: &[&particle_buffers.bind_group_layout],
+                    bind_group_layouts: &[&buffers.bind_group_layout],
                     immediate_size: 0,
                 });
 
@@ -110,12 +104,34 @@ impl State {
             is_surface_configured: false,
             window,
             render_pipeline,
-            buffers: particle_buffers,
-            particle_grid: initial_particle_grid,
-            selected_material: 1, // initialize to sand
+            buffers,
+            particle_manager,
             last_update: Instant::now(),
             update_interval: Duration::from_millis(MS_PER_SIMULATION),
         })
+    }
+
+    // --- Material Selection ---
+    pub(crate) fn cycle_material_up(&mut self) {
+        self.particle_manager.cycle_material_up();
+
+        self.buffers.update_selected_material_buffer(
+            &self.gpu_context.queue,
+            self.particle_manager.selected_material(),
+        );
+    }
+    pub(crate) fn cycle_material_down(&mut self) {
+        self.particle_manager.cycle_material_down();
+
+        self.buffers.update_selected_material_buffer(
+            &self.gpu_context.queue,
+            self.particle_manager.selected_material(),
+        );
+    }
+
+    // --- General Settings ---
+    pub fn set_simulation_speed(&mut self, updates_per_second: u32) {
+        self.update_interval = Duration::from_secs_f32(1.0 / updates_per_second as f32);
     }
 
     pub fn resize(&mut self, width: u32, height: u32) {
@@ -129,10 +145,7 @@ impl State {
         }
     }
 
-    pub fn set_simulation_speed(&mut self, updates_per_second: u32) {
-        self.update_interval = Duration::from_secs_f32(1.0 / updates_per_second as f32);
-    }
-
+    // --- Mouse position ---
     pub fn update_mouse_position(&mut self, cursor_x: f64, cursor_y: f64) {
         let window_size = self.window.inner_size();
 
@@ -141,67 +154,20 @@ impl State {
         let normalized_y = (cursor_y / window_size.height as f64) as f32;
 
         // Update GPU buffer
-        self.buffers
-            .update_mouse_position(&self.gpu_context.queue, normalized_x, normalized_y);
+        self.buffers.update_mouse_position_buffer(
+            &self.gpu_context.queue,
+            normalized_x,
+            normalized_y,
+        );
     }
 
-    pub fn change_material(&mut self, material: u8) {
-        self.selected_material = material;
-        self.buffers
-            .update_selected_material(&self.gpu_context.queue, material);
+    // --- Material creation ---
+    pub fn add_material_at_cursor(&mut self, x: f64, y: f64) {
+        self.particle_manager
+            .add_material_at_cursor(&self.window.inner_size(), x, y);
     }
 
-    pub fn cycle_material_up(&mut self) {
-        // Cycle through materials: 0 (air) -> 1 (sand) -> 2 (stone) -> 0
-        self.selected_material = (self.selected_material + 1) % 3;
-        self.buffers
-            .update_selected_material(&self.gpu_context.queue, self.selected_material);
-    }
-
-    pub fn cycle_material_down(&mut self) {
-        // Cycle backwards: 0 (air) -> 2 (stone) -> 1 (sand) -> 0
-        self.selected_material = if self.selected_material == 0 {
-            2
-        } else {
-            self.selected_material - 1
-        };
-        self.buffers
-            .update_selected_material(&self.gpu_context.queue, self.selected_material);
-    }
-
-    pub fn add_material_at_cursor(&mut self, cursor_x: f64, cursor_y: f64) {
-        let window_size = self.window.inner_size();
-
-        // Convert cursor position to grid coordinates
-        let grid_x =
-            ((cursor_x / window_size.width as f64) * self.buffers.grid_width as f64) as i32;
-        let grid_y =
-            ((cursor_y / window_size.height as f64) * self.buffers.grid_height as f64) as i32;
-
-        let radius = RADIUS_ADD_PARTICLES as i32;
-
-        // Add the selected material in a circle around the cursor
-        for dy in -radius..=radius {
-            for dx in -radius..=radius {
-                // Check if point is within circle
-                if dx * dx + dy * dy <= radius * radius {
-                    let x = grid_x + dx;
-                    let y = grid_y + dy;
-
-                    // Check bounds
-                    if x >= 0
-                        && x < self.buffers.grid_width as i32
-                        && y >= 0
-                        && y < self.buffers.grid_height as i32
-                    {
-                        let index = (y * self.buffers.grid_width as i32 + x) as usize;
-                        self.particle_grid[index] = self.selected_material;
-                    }
-                }
-            }
-        }
-    }
-
+    // --- Render ---
     pub fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
         // We can't render unless the surface is configured
         if !self.is_surface_configured {
@@ -211,17 +177,12 @@ impl State {
         // Only simulate if enough time has passed
         let now = Instant::now();
         if now.duration_since(self.last_update) >= self.update_interval {
-            let updated_data = simulate_particles(
-                &mut self.particle_grid,
-                self.buffers.grid_height,
-                self.buffers.grid_width,
-            );
+            self.particle_manager.simulate_particles();
 
-            // Update GPU buffer with simulated data
-            self.gpu_context.queue.write_buffer(
-                &self.buffers.particle_grid_buffer,
-                0,
-                updated_data,
+            // Update GPU buffer with updated particle grid
+            self.buffers.update_particle_grid_buffer(
+                &self.gpu_context.queue,
+                self.particle_manager.particle_grid(),
             );
 
             self.last_update = now;

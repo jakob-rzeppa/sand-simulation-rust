@@ -7,8 +7,6 @@ pub struct Buffers {
     pub selected_material_buffer: wgpu::Buffer,
     pub bind_group: wgpu::BindGroup,
     pub bind_group_layout: wgpu::BindGroupLayout,
-    pub grid_width: u32,
-    pub grid_height: u32,
 }
 
 impl Buffers {
@@ -151,13 +149,11 @@ impl Buffers {
             selected_material_buffer,
             bind_group,
             bind_group_layout,
-            grid_width: width,
-            grid_height: height,
         }
     }
 
     /// Update the mouse position buffer with normalized coordinates (0.0 to 1.0)
-    pub fn update_mouse_position(&self, queue: &wgpu::Queue, x: f32, y: f32) {
+    pub fn update_mouse_position_buffer(&self, queue: &wgpu::Queue, x: f32, y: f32) {
         queue.write_buffer(
             &self.mouse_position_buffer,
             0,
@@ -165,8 +161,11 @@ impl Buffers {
         );
     }
 
-    /// Update the selected material buffer
-    pub fn update_selected_material(&self, queue: &wgpu::Queue, material: u8) {
+    pub fn update_particle_grid_buffer(&self, queue: &wgpu::Queue, particle_grid: &[u8]) {
+        queue.write_buffer(&self.particle_grid_buffer, 0, particle_grid);
+    }
+
+    pub fn update_selected_material_buffer(&self, queue: &wgpu::Queue, material: u8) {
         queue.write_buffer(
             &self.selected_material_buffer,
             0,

@@ -38,12 +38,7 @@ impl ApplicationHandler for App {
             }
         };
 
-        self.state = match pollster::block_on(State::new(
-            window,
-            vec![0u8; (WIDTH * HEIGHT) as usize],
-            WIDTH,
-            HEIGHT,
-        )) {
+        self.state = match pollster::block_on(State::new(window, WIDTH, HEIGHT)) {
             Ok(state) => Some(state),
             Err(e) => {
                 log::error!("Failed to create state: {}", e);
